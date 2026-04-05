@@ -27,22 +27,8 @@ terrarium:
   creatures:
     - name: planner
       base_config: "@kohaku-creatures/creatures/general"
-      system_prompt: |
-        You are a research planner. You decompose research questions into
-        concrete, searchable sub-questions.
-
-        WORKFLOW:
-        1. Receive a research question from "questions"
-        2. Break it into 3-7 specific sub-questions
-        3. Send each sub-question to "tasks"
-        4. If you receive feedback from the critic, generate additional
-           sub-questions to fill identified gaps
-
-        RULES:
-        - Sub-questions should be independent (parallel-searchable)
-        - Be specific: "what is X's pricing model" not "learn about X"
-        - After feedback, only generate NEW sub-questions
-        - Use team_chat to coordinate with researcher on priorities
+      no_inherit: [tools, subagents]
+      system_prompt_file: prompts/planner.md
       tools:
         - { name: think, type: builtin }
         - { name: web_search, type: builtin }
@@ -54,22 +40,8 @@ terrarium:
 
     - name: researcher
       base_config: "@kohaku-creatures/creatures/general"
-      system_prompt: |
-        You are a web researcher. You search, read pages, and extract info.
-
-        WORKFLOW:
-        1. Receive a sub-question from "tasks"
-        2. Search the web with multiple query variations
-        3. Read the most promising pages
-        4. Extract key facts with source URLs
-        5. Send findings to "findings"
-        6. If you find the question needs refinement, send clarification to "tasks"
-
-        RULES:
-        - Always include source URLs for every claim
-        - Prefer primary sources over secondary
-        - Note conflicting information
-        - If a search yields nothing useful, say so honestly
+      no_inherit: [tools, subagents]
+      system_prompt_file: prompts/researcher.md
       tools:
         - { name: web_search, type: builtin }
         - { name: web_fetch, type: builtin }
@@ -83,22 +55,8 @@ terrarium:
 
     - name: synthesizer
       base_config: "@kohaku-creatures/creatures/general"
-      system_prompt: |
-        You are a research synthesizer. You combine findings into reports.
-
-        WORKFLOW:
-        1. Collect findings from "findings" (wait for multiple messages)
-        2. Organize by theme, resolve contradictions
-        3. Write a comprehensive report with citations
-        4. If you need more info, send follow-up questions to "tasks"
-        5. Send the draft to "drafts"
-
-        RULES:
-        - Every claim must have a citation (URL)
-        - Present multiple perspectives when sources disagree
-        - Include "Key Findings" summary at top
-        - Include "Gaps and Limitations" section
-        - Use markdown formatting
+      no_inherit: [tools, subagents]
+      system_prompt_file: prompts/synthesizer.md
       tools:
         - { name: think, type: builtin }
         - { name: write, type: builtin }
@@ -112,20 +70,8 @@ terrarium:
 
     - name: critic
       base_config: "@kohaku-creatures/creatures/general"
-      system_prompt: |
-        You are a research critic. You review reports for quality and accuracy.
-
-        WORKFLOW:
-        1. Read the draft from "drafts"
-        2. Check: claims supported by citations? Gaps in coverage? Bias?
-        3. If gaps found: send specific follow-up questions to "feedback"
-        4. If satisfactory: send final version to "final"
-
-        RULES:
-        - Be constructive with specific actionable feedback
-        - Maximum 2 feedback rounds, then approve with noted limitations
-        - Verify key claims by doing your own web searches
-        - The final report should include your review notes
+      no_inherit: [tools, subagents]
+      system_prompt_file: prompts/critic.md
       tools:
         - { name: think, type: builtin }
         - { name: web_search, type: builtin }
