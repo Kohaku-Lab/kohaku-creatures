@@ -48,11 +48,16 @@ memory:
   embedding:
     provider: model2vec
     model: "@retrieval"
-    # model2vec presets: @tiny (2M/64d), @base (8M/256d), @retrieval (32M/512d),
-    #   @multilingual (128M/256d/101langs), @science (32M/256d/arxiv+pubmed)
-    # sentence-transformer presets: @tiny (granite-30m), @small (granite-47m/8K),
-    #   @base (gte-modernbert/8K), @nomic (nomic-v1.5/8K), @gemma (embeddinggemma-300m),
-    #   @multilingual (gte-multilingual/8K/70langs)
+    # model2vec presets (no torch, numpy-only):
+    #   @tiny (2M/64d), @base (8M/256d), @retrieval (32M/512d),
+    #   @best (static-retrieval-mrl/1024d/Matryoshka),
+    #   @multilingual (128M/256d/101langs),
+    #   @multilingual-best (static-similarity-mrl/1024d/51langs),
+    #   @science (32M/256d)
+    # sentence-transformer presets (needs torch):
+    #   @tiny (granite-30m), @small (granite-47m/8K),
+    #   @base (gte-modernbert/8K), @nomic (nomic-v1.5/8K),
+    #   @gemma (embeddinggemma-300m), @multilingual (gte-multilingual/8K/70langs)
     # Or use any HuggingFace model path directly
 
 # compact.max_tokens auto-derived from model's max_context
