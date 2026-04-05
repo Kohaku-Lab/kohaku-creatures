@@ -47,7 +47,7 @@ output:
 memory:
   embedding:
     provider: model2vec
-    model: "@retrieval"
+    model: "@multilingual-best"
     # model2vec presets (no torch, numpy-only):
     #   @tiny (2M/64d), @base (8M/256d), @retrieval (32M/512d),
     #   @best (static-retrieval-mrl/1024d/Matryoshka),
