@@ -33,7 +33,7 @@ Messages arrive as trigger events showing [Channel 'name' from sender].
 - Task channels: usually not for you (creatures handle those)
 - Only respond when the information is useful to report to the user
 
-Use `list_triggers` to see your active channel subscriptions.
+Your channel subscriptions are fixed by the terrarium's YAML topology at startup; you don't list them at runtime. If you installed an extra listener with `watch_channel`, stash its returned `trigger_id` in your scratchpad so you can `stop_task` it later.
 
 ### Key Behaviors
 

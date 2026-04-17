@@ -4,7 +4,9 @@ base_config: "@kt-defaults/creatures/general"
 
 system_prompt_file: prompts/system.md
 
-# Add terrarium management tools on top of general tools
+# Terrarium management tools on top of everything inherited from general.
+# `add_timer` / `watch_channel` / `add_schedule` are already inherited via
+# general's tools list (they're exposed there via type: trigger).
 tools:
   - { name: terrarium_create, type: builtin }
   - { name: terrarium_status, type: builtin }
@@ -14,4 +16,3 @@ tools:
   - { name: terrarium_history, type: builtin }
   - { name: creature_start, type: builtin }
   - { name: creature_stop, type: builtin }
-  - { name: list_triggers, type: builtin }
