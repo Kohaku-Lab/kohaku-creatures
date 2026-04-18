@@ -1,89 +1,84 @@
 # Deep Research Terrarium
 # Multi-agent web research system: search, read, synthesize, cite.
 #
-# Topology (bidirectional where needed):
-#   root -> questions -> planner
-#   planner -> tasks -> researcher
-#   researcher -> findings -> synthesizer
-#   researcher -> tasks (can request more sub-questions)
-#   synthesizer -> drafts -> critic
-#   synthesizer -> tasks (can request follow-up searches)
-#   critic -> feedback -> planner (gaps found, re-search)
-#   critic -> final (approved)
-#   all -> report_to_root (auto-injected)
-#   team_chat for coordination
+# Topology:
+#   root      -> questions -> planner
+#   planner   =============> researcher       (via output_wiring)
+#   researcher ============> synthesizer      (via output_wiring)
+#   researcher -> tasks     -> researcher     (self-loop: sub-questions on channel)
+#   synthesizer ===========> critic           (via output_wiring)
+#   synthesizer -> tasks    -> researcher     (follow-up searches, channel)
+#   critic    -> feedback  -> planner         (gaps found, channel)
+#   critic    -> final                        (approved report, channel)
+#   every creature -> root                    (lifecycle ping, with_content: false)
+#   team_chat (broadcast)                     for coordination
+#
+# Linear pipeline edges use output_wiring so progress doesn't rely on
+# the creature remembering to `send_message` for the main hand-off.
+# Conditional or loop-back edges stay on channels.
+#
+# Every creature inherits the full `@kt-biome/creatures/general`
+# toolset + subagents; role is shaped by the per-creature prompt.
 #
 # Usage:
-#   kt terrarium run @kt-defaults/terrariums/deep_research/
+#   kt terrarium run @kt-biome/terrariums/deep_research/
 
 terrarium:
   name: deep_research
 
   root:
-    base_config: "@kt-defaults/creatures/root"
+    base_config: "@kt-biome/creatures/root"
     controller:
       tool_format: native
 
   creatures:
     - name: planner
-      base_config: "@kt-defaults/creatures/general"
-      no_inherit: [tools, subagents]
+      base_config: "@kt-biome/creatures/general"
       system_prompt_file: prompts/planner.md
-      tools:
-        - { name: think, type: builtin }
-        - { name: web_search, type: builtin }
-        - { name: send_message, type: builtin }
+      output_wiring:
+        - researcher
+        - { to: root, with_content: false }
       channels:
         listen: [questions, feedback, team_chat]
-        can_send: [tasks, team_chat]
+        can_send: [team_chat]
 
     - name: researcher
-      base_config: "@kt-defaults/creatures/general"
-      no_inherit: [tools, subagents]
+      base_config: "@kt-biome/creatures/general"
       system_prompt_file: prompts/researcher.md
-      tools:
-        - { name: web_search, type: builtin }
-        - { name: web_fetch, type: builtin }
-        - { name: think, type: builtin }
-        - { name: scratchpad, type: builtin }
-        - { name: send_message, type: builtin }
+      output_wiring:
+        - synthesizer
+        - { to: root, with_content: false }
       channels:
+        # `tasks` self-loop lets the researcher queue follow-up
+        # sub-questions (e.g. when a finding reveals new angles).
         listen: [tasks, team_chat]
-        can_send: [findings, tasks, team_chat]
+        can_send: [tasks, team_chat]
 
     - name: synthesizer
-      base_config: "@kt-defaults/creatures/general"
-      no_inherit: [tools, subagents]
+      base_config: "@kt-biome/creatures/general"
       system_prompt_file: prompts/synthesizer.md
-      tools:
-        - { name: think, type: builtin }
-        - { name: write, type: builtin }
-        - { name: read, type: builtin }
-        - { name: scratchpad, type: builtin }
-        - { name: send_message, type: builtin }
+      output_wiring:
+        - critic
+        - { to: root, with_content: false }
       channels:
-        listen: [findings, team_chat]
-        can_send: [drafts, tasks, team_chat]
+        # synthesizer may also request follow-up searches by sending on tasks.
+        listen: [team_chat]
+        can_send: [tasks, team_chat]
 
     - name: critic
-      base_config: "@kt-defaults/creatures/general"
-      no_inherit: [tools, subagents]
+      base_config: "@kt-biome/creatures/general"
       system_prompt_file: prompts/critic.md
-      tools:
-        - { name: think, type: builtin }
-        - { name: web_search, type: builtin }
-        - { name: web_fetch, type: builtin }
-        - { name: read, type: builtin }
-        - { name: send_message, type: builtin }
+      # Critic is the CONDITIONAL stage: gaps -> feedback to planner;
+      # approved -> final. Wiring can't branch, so only lifecycle pings root.
+      output_wiring:
+        - { to: root, with_content: false }
       channels:
-        listen: [drafts, team_chat]
+        listen: [team_chat]
         can_send: [feedback, final, team_chat]
 
   channels:
-    questions: { type: queue, description: "Research questions from root" }
-    tasks:     { type: queue, description: "Sub-questions for researchers" }
-    findings:  { type: queue, description: "Research findings with citations" }
-    drafts:    { type: queue, description: "Draft reports for review" }
-    feedback:  { type: queue, description: "Critic feedback to planner" }
-    final:     { type: queue, description: "Final approved reports" }
+    questions: { type: queue,     description: "Research questions from root" }
+    tasks:     { type: queue,     description: "Sub-questions (researcher self-loop + synthesizer follow-ups)" }
+    feedback:  { type: queue,     description: "Critic -> planner (gap reports)" }
+    final:     { type: queue,     description: "Final approved reports" }
     team_chat: { type: broadcast, description: "Cross-creature coordination" }
