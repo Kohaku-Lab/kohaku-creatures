@@ -19,7 +19,6 @@ tools:
   - { name: glob, type: builtin }
   - { name: grep, type: builtin }
   - { name: tree, type: builtin }
-  - { name: think, type: builtin }
   - { name: scratchpad, type: builtin }
   - { name: info, type: builtin }
   - { name: ask_user, type: builtin }

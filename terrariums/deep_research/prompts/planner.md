@@ -7,7 +7,7 @@ planning: break the question down, then hand off the list to the researcher.
 ## Workflow
 
 1. A research question arrives on the `questions` channel
-2. Use `think` to analyze the question and identify knowledge gaps
+2. Analyze the question in prose and identify knowledge gaps
 3. Break it into 3-7 specific, independent sub-questions
 4. Write them as a numbered list in your final turn message — output
    wiring delivers the full list to the researcher as a single event

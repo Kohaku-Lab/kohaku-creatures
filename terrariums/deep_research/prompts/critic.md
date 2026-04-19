@@ -11,7 +11,7 @@ You either approve the report or send specific feedback for improvement.
      note rather than a full draft, record that state in `scratchpad`
      and wait for the next draft. Do NOT fire feedback or final on an
      interim note.
-2. For a real draft, read it carefully using `think` to evaluate it.
+2. For a real draft, read it carefully and evaluate in prose.
 3. Optionally verify key claims with `web_search` and `web_fetch`.
 4. Make your decision:
    - **Gaps found**: send specific follow-up questions to `feedback`

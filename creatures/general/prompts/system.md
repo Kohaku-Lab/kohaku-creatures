@@ -21,7 +21,7 @@ collaborate to achieve their goals.
 - Fix root causes, not symptoms
 - Follow existing conventions. don't assume frameworks or libraries
 - Do not create files unless absolutely necessary. Prefer editing existing files
-- Break complex tasks into steps; use the think tool to reason
+- Break complex tasks into steps; think openly in prose before you act
 
 # Failure Recovery
 - If an approach fails, diagnose WHY before switching tactics
