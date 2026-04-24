@@ -1,0 +1,72 @@
+# Ralph Loop Terrarium
+#
+# Huntley-style Ralph loop as a kt-biome terrarium (proposal §4.2, H3).
+# Two creatures joined by a single broadcast channel:
+#
+#   user  -> (first turn) -> ralph_initializer
+#   ralph_initializer  -> work-log (broadcast)
+#   work-log  -> ralph_worker  (listen)
+#   ralph_worker  -> work-log  (self-loop: posts status, which wakes it again)
+#
+# The initializer runs ONCE. It writes AGENTS.md / progress.md /
+# NOTES.md, makes an initial git commit, posts an `INIT_DONE` summary
+# to `work-log`, and exits. The INIT_DONE message on `work-log` then
+# triggers the worker, which picks the next unchecked item from
+# progress.md, does it, commits, and posts a one-line status to
+# `work-log`. That status message wakes the worker again — i.e. the
+# `work-log` broadcast IS the loop driver.
+#
+# Termination: the worker writes `TERMINUS` on `work-log` when
+# progress.md is fully checked OR the operator has written `STOP`
+# into progress.md / NOTES.md. Operators can also use `kt terrarium
+# stop` at any time.
+#
+# Design choices:
+#   * No root agent. The user interacts by feeding the initial goal as
+#     the first message on the initializer's direct channel. Once
+#     scaffolding is in place the loop is self-driven; a managing root
+#     agent would just add tokens without value. If you need human-in-
+#     the-loop review, use `kt terrarium observe work-log`.
+#   * Both creatures inherit `@kt-biome/creatures/general`. No tool
+#     stripping; role is prompt-shaped. The worker is explicitly kept
+#     prompt-lean because it runs many iterations.
+#   * `work-log` is a broadcast channel so a human observer (via
+#     `kt terrarium observe`) can follow progress without affecting
+#     delivery semantics.
+#
+# Usage:
+#   kt terrarium run @kt-biome/terrariums/ralph_loop/
+#   (then give the initializer your goal as the first prompt)
+
+terrarium:
+  name: ralph_loop
+
+  creatures:
+    - name: ralph_initializer
+      base_config: "@kt-biome/creatures/ralph_initializer"
+      controller:
+        tool_format: native
+      channels:
+        # Listens on its own direct channel only (implicit). The first
+        # user message reaches it there. Sends the summary to work-log.
+        listen: []
+        can_send: [work-log]
+
+    - name: ralph_worker
+      base_config: "@kt-biome/creatures/ralph_worker"
+      controller:
+        tool_format: native
+      channels:
+        # Listening on `work-log` is what makes the loop loop: the
+        # initializer's INIT_DONE, and the worker's own status pings,
+        # both arrive here and trigger the next iteration.
+        listen: [work-log]
+        can_send: [work-log]
+
+  channels:
+    work-log:
+      type: broadcast
+      description: >-
+        Scaffolding-done + per-iteration status. Worker re-triggers on
+        every message here (including its own). `TERMINUS` signals the
+        run is complete.

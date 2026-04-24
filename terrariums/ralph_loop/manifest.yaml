@@ -1,0 +1,35 @@
+# Manifest fragment for the Ralph loop terrarium + its two creatures.
+#
+# This file is a *fragment* — it is NOT merged into kt-biome/kohaku.yaml
+# automatically. It documents the entries a consumer should add to
+# their `kohaku.yaml` to register the creatures and the terrarium with
+# the package system.
+#
+# Corresponding proposal: plans/harness/proposal.md §4.2 (H3).
+
+creatures:
+  - name: ralph_initializer
+    path: creatures/ralph_initializer
+    description: >-
+      Ralph loop — scaffolding run. Writes AGENTS.md, progress.md,
+      NOTES.md, makes an initial git commit, emits INIT_DONE on the
+      work-log channel, exits. Runs exactly once per loop.
+    base: general
+
+  - name: ralph_worker
+    path: creatures/ralph_worker
+    description: >-
+      Ralph loop — iterative worker. Each wake reads progress.md /
+      NOTES.md / AGENTS.md, completes one checkbox item, commits,
+      appends a note, posts a status on work-log (which re-triggers
+      the next iteration). Emits TERMINUS on completion or when a
+      STOP sentinel is present.
+    base: general
+
+terrariums:
+  - name: ralph_loop
+    path: terrariums/ralph_loop
+    description: >-
+      Huntley-style Ralph loop: one-shot initializer + repeating
+      worker joined by a broadcast `work-log` channel. No root agent.
+    uses: [ralph_initializer, ralph_worker]

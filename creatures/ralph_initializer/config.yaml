@@ -1,0 +1,16 @@
+name: ralph_initializer
+version: "1.0"
+base_config: "@kt-biome/creatures/general"
+
+# Inherits the full `general` toolset (bash, read, write, edit, grep,
+# glob, tree, send_message, stop_task, ...). The initializer only
+# needs file I/O + git + send_message, but overriding the list would
+# force users to keep it in sync with `general`. Instead we rely on
+# prompt discipline: the system.md locks behaviour to "write three
+# files, commit, emit summary, exit."
+controller:
+  # Init is a one-shot; a little extra reasoning is fine on the first
+  # turn because the layout + task list are load-bearing.
+  reasoning_effort: "${REASONING:high}"
+
+system_prompt_file: prompts/system.md

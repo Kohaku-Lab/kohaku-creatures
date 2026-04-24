@@ -1,0 +1,19 @@
+name: ralph_worker
+version: "1.0"
+base_config: "@kt-biome/creatures/general"
+
+# Worker runs many times. Keep prompt tokens tight: `general` already
+# supplies bash / read / write / edit / grep / glob / tree /
+# send_message / stop_task. The worker relies on `##info tool_name##`
+# for detailed docs instead of bloating its system.md.
+controller:
+  # One item per turn; medium effort is enough and costs less.
+  reasoning_effort: "${REASONING:medium}"
+
+system_prompt_file: prompts/system.md
+
+# Ralph is an autonomous loop. Cap total LLM turns across the worker
+# + any sub-agents it spawns so a runaway checklist cannot chew
+# through credit indefinitely. 300 turns is generous for most
+# progress.md workloads; lower this for cheaper experiments.
+max_iterations: 300
