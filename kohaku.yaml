@@ -76,6 +76,11 @@ plugins:
     class: MultimodalGuardPlugin
     description: "Rewrite multimodal LLM input into text-only placeholders before model calls"
 
+  - name: seamless_memory
+    module: kt_biome.plugins.seamless_memory
+    class: SeamlessMemoryPlugin
+    description: "Fully adaptive memory reader+writer: two internal agents on pre_llm_call / post_llm_call"
+
   - name: termination_goal
     module: kt_biome.plugins.termination_goal
     class: TerminationGoalPlugin
@@ -85,6 +90,11 @@ plugins:
     module: kt_biome.plugins.checkpoint
     class: CheckpointPlugin
     description: "Snapshot the workspace via git stash before destructive tools (write/edit/multi_edit/destructive bash)."
+
+  - name: pev_verifier
+    module: kt_biome.plugins.pev_verifier
+    class: PEVVerifierPlugin
+    description: "Independent-verifier PEV harness: spawns an evaluator agent on generator completion; re-injects issues on fail."
 
   - name: circuit_breaker
     module: kt_biome.plugins.circuit_breaker

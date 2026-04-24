@@ -67,6 +67,15 @@ class MemorySearchTool(BaseTool):
     def execution_mode(self) -> ExecutionMode:
         return ExecutionMode.DIRECT
 
+    def prompt_contribution(self) -> str | None:
+        # Cluster 5 / E.1 self-described guidance. Kept short — long
+        # docs stay behind ##info memory_search##.
+        return (
+            "When recalling prior work with `memory_search`, query with "
+            "related concepts — not just the user's verbatim keywords. "
+            "Call it multiple times with different angles."
+        )
+
     def get_parameters_schema(self) -> dict:
         return {
             "type": "object",
@@ -248,13 +257,12 @@ class SeamlessMemoryPlugin(BasePlugin):
         self._write_agent = None
 
     def _init_session_memory(self) -> None:
-        if not self._ctx or not self._ctx._agent:
+        if self._ctx is None:
             return
-        host = self._ctx._agent
-        if not hasattr(host, "session_store") or not host.session_store:
+        store = self._ctx.session_store
+        if store is None:
             return
         try:
-            store = host.session_store
             embedder = None
             embed_config = store.state.get("embedding_config")
             if embed_config:
@@ -345,9 +353,9 @@ class SeamlessMemoryPlugin(BasePlugin):
         if not self._session_memory or not self._ctx:
             return
         agent_name = self._ctx.agent_name
-        host = self._ctx._agent
-        if host and hasattr(host, "session_store") and host.session_store:
-            host.session_store.append_event(
+        store = self._ctx.session_store
+        if store is not None:
+            store.append_event(
                 agent_name,
                 "memory_note",
                 {"content": f"[{category}] {content}", "source": "seamless_memory"},
@@ -428,9 +436,9 @@ class SeamlessMemoryPlugin(BasePlugin):
         if not self._session_memory or not self._ctx:
             return
         try:
-            host = self._ctx._agent
-            if host and hasattr(host, "session_store") and host.session_store:
-                events = host.session_store.get_events(self._ctx.agent_name)
+            store = self._ctx.session_store
+            if store is not None:
+                events = store.get_events(self._ctx.agent_name)
                 self._session_memory.index_events(self._ctx.agent_name, events)
         except Exception as e:
             logger.debug("Re-index failed", error=str(e))
