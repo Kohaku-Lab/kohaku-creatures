@@ -77,6 +77,12 @@ tools:
     class: DatabaseTool
     description: "Execute SQL queries against a SQLite database"
 
+  # Autonomous skill creation — proposal §4.8 / S13/S14.
+  - name: skill_manage
+    module: kt_biome.tools.skill_manage
+    class: SkillManageTool
+    description: "Create/patch/view reusable procedural skills as agentskills.io-compatible SKILL.md bundles."
+
 io:
   - name: discord_input
     module: kt_biome.io.discord
@@ -111,3 +117,9 @@ triggers:
     module: kt_biome.triggers.webhook
     class: WebhookTrigger
     description: "Receive HTTP POST webhooks as agent events"
+
+  # Autonomous-skill-creation nudge — proposal §4.8 / S13.
+  - name: skill_nudge
+    module: kt_biome.triggers.skill_nudge
+    class: SkillNudgeTrigger
+    description: "Periodic 'consider saving a skill' hint; silences itself when skill_manage is used."
