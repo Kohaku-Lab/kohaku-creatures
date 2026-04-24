@@ -150,6 +150,17 @@ io:
     class: DiscordOutput
     description: "Send agent responses to Discord channels"
 
+  # Telegram messaging — proposal §4.11 / X5.
+  - name: telegram_input
+    module: kt_biome.io.telegram_input
+    class: TelegramInput
+    description: "Telegram long-polling input (optional python-telegram-bot dep); chat/user allow-lists + command prefix."
+
+  - name: telegram_output
+    module: kt_biome.io.telegram_output
+    class: TelegramOutput
+    description: "Telegram final-only output; fence-aware splitting at 4000 chars; MarkdownV2 escape."
+
 prompts:
   - name: git-safety
     path: prompts/git-safety.md
