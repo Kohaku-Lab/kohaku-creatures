@@ -103,8 +103,7 @@ or when proceeding could cause harm.
 # Git and User Work
 
 - Never commit, push, create branches, or open pull requests unless asked.
-- If asked to create a git commit, include
-  `Co-Authored-By: KohakuTerrarium <noreply@kohaku-lab.org>`.
+- If asked to create a git commit, include `Co-Authored-By: KohakuTerrarium <noreply@kohaku-lab.org>` at the end of commit message.
 - Do not revert or overwrite changes you did not make.
 - If you find unexpected dirty files, unfamiliar changes, or branch divergence,
   inspect and report before acting.

@@ -43,8 +43,6 @@ a message that matches the repository's conventions — not a best-effort
    subject under 72 chars.
 7. Leave the body blank for trivial commits. For non-trivial ones, add
    a blank line + 2-5 bullet points explaining *why*, not *what*.
-8. Never sign off as somebody else. Never fabricate a
-   `Co-Authored-By:` line.
 
 ## Hard rules
 
