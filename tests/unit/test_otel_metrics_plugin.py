@@ -6,6 +6,7 @@ Uses a controllable ``Clock`` stub for deterministic timing behaviour.
 
 import sys
 from types import ModuleType, SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -63,10 +64,15 @@ for _blocked in [
     "opentelemetry.exporter.otlp.proto",
     "opentelemetry.exporter.otlp.proto.http",
     "opentelemetry.exporter.otlp.proto.http.metric_exporter",
+    "opentelemetry.exporter.otlp.proto.http.trace_exporter",
     "opentelemetry.sdk",
     "opentelemetry.sdk.metrics",
     "opentelemetry.sdk.metrics.export",
     "opentelemetry.sdk.resources",
+    "opentelemetry.sdk.trace",
+    "opentelemetry.sdk.trace.export",
+    "opentelemetry.trace",
+    "opentelemetry.trace.status",
 ]:
     if _blocked not in sys.modules:
         sys.modules[_blocked] = ModuleType(_blocked)
@@ -92,14 +98,15 @@ class Clock:
         self.t += dt
 
 
-def _ctx(agent_name: str = "test-agent"):
+def _ctx(agent_name: str = "test-agent", session_id: str = "sess-abc123"):
     """Minimal PluginContext stand-in."""
-    return SimpleNamespace(agent_name=agent_name)
+    return SimpleNamespace(agent_name=agent_name, session_id=session_id)
 
 
 def _make_plugin(options: dict | None = None) -> OTelMetricsPlugin:
     """Create plugin with mocked OTEL instruments pre-populated."""
     plugin = OTelMetricsPlugin(options)
+    plugin._ctx = _ctx()
     for name, _ in mod._COUNTER_DEFS:
         plugin._counters[name] = MagicMock()
     for name, _, _ in mod._HISTOGRAM_DEFS:
@@ -126,7 +133,7 @@ async def test_graceful_no_otel() -> None:
 
 @pytest.mark.asyncio
 async def test_on_load_creates_instruments() -> None:
-    """2. on_load creates all 12 counters and 7 histograms via the meter."""
+    """2. on_load creates all 14 counters and 7 histograms via the meter."""
     mock_meter = MagicMock()
     mock_provider = MagicMock()
     mock_provider.get_meter.return_value = mock_meter
@@ -182,14 +189,14 @@ async def test_llm_call_timing_and_tokens() -> None:
         )
 
     plugin._histograms["kt.llm.duration"].record.assert_called_once_with(
-        500.0, {"model": "gpt-5.4"}
+        500.0, {"model": "gpt-5.4", "request_source": "main", "session_id": "sess-abc123"}
     )
-    plugin._counters["kt.llm.calls"].add.assert_called_with(1, {"model": "gpt-5.4"})
+    plugin._counters["kt.llm.calls"].add.assert_called_with(1, {"model": "gpt-5.4", "request_source": "main", "session_id": "sess-abc123"})
     plugin._counters["kt.llm.tokens.prompt"].add.assert_called_with(
-        100, {"model": "gpt-5.4"}
+        100, {"model": "gpt-5.4", "request_source": "main", "session_id": "sess-abc123"}
     )
     plugin._counters["kt.llm.tokens.completion"].add.assert_called_with(
-        50, {"model": "gpt-5.4"}
+        50, {"model": "gpt-5.4", "request_source": "main", "session_id": "sess-abc123"}
     )
 
 
@@ -202,7 +209,7 @@ async def test_llm_call_usage_none() -> None:
     await plugin.pre_llm_call(msgs, model="test-model")
     await plugin.post_llm_call(msgs, None, None, model="test-model")
 
-    plugin._counters["kt.llm.calls"].add.assert_called_with(1, {"model": "test-model"})
+    plugin._counters["kt.llm.calls"].add.assert_called_with(1, {"model": "test-model", "request_source": "main", "session_id": "sess-abc123"})
 
 
 @pytest.mark.asyncio
@@ -234,7 +241,7 @@ async def test_tool_dispatch_counter() -> None:
     await plugin.pre_tool_dispatch(call, _ctx())
 
     plugin._counters["kt.tool.dispatches"].add.assert_called_with(
-        1, {"tool_name": "bash"}
+        1, {"tool_name": "bash", "session_id": "sess-abc123"}
     )
 
 
@@ -252,8 +259,8 @@ async def test_tool_execute_timing_and_errors() -> None:
 
     args, kwargs = plugin._histograms["kt.tool.duration"].record.call_args
     assert args[0] == pytest.approx(300.0)
-    assert kwargs == {} or args[1] == {"tool_name": "bash"}
-    plugin._counters["kt.tool.calls"].add.assert_called_with(1, {"tool_name": "bash"})
+    assert args[1] == {"tool_name": "bash", "session_id": "sess-abc123"}
+    plugin._counters["kt.tool.calls"].add.assert_called_with(1, {"tool_name": "bash", "session_id": "sess-abc123"})
     plugin._counters["kt.tool.errors"].add.assert_not_called()
 
     # Failure path
@@ -263,7 +270,7 @@ async def test_tool_execute_timing_and_errors() -> None:
         result_fail = SimpleNamespace(success=False)
         await plugin.post_tool_execute(result_fail, tool_name="bash", job_id="j2")
 
-    plugin._counters["kt.tool.errors"].add.assert_called_with(1, {"tool_name": "bash"})
+    plugin._counters["kt.tool.errors"].add.assert_called_with(1, {"tool_name": "bash", "session_id": "sess-abc123"})
 
 
 @pytest.mark.asyncio
@@ -273,7 +280,7 @@ async def test_tool_result_none() -> None:
     await plugin.pre_tool_execute({"cmd": "ls"}, tool_name="bash", job_id="j3")
     await plugin.post_tool_execute(None, tool_name="bash", job_id="j3")
 
-    plugin._counters["kt.tool.calls"].add.assert_called_with(1, {"tool_name": "bash"})
+    plugin._counters["kt.tool.calls"].add.assert_called_with(1, {"tool_name": "bash", "session_id": "sess-abc123"})
     plugin._counters["kt.tool.errors"].add.assert_not_called()
 
 
@@ -291,14 +298,14 @@ async def test_subagent_run() -> None:
         result = SimpleNamespace(success=False, turns=7)
         await plugin.post_subagent_run(result, name="worker", job_id="j4")
 
-    plugin._counters["kt.subagent.runs"].add.assert_called_with(1, {"name": "worker"})
+    plugin._counters["kt.subagent.runs"].add.assert_called_with(1, {"name": "worker", "request_source": "subagent", "session_id": "sess-abc123"})
     plugin._histograms["kt.subagent.duration"].record.assert_called_with(
-        1000.0, {"name": "worker"}
+        1000.0, {"name": "worker", "request_source": "subagent", "session_id": "sess-abc123"}
     )
     plugin._histograms["kt.subagent.turns"].record.assert_called_with(
-        7, {"name": "worker"}
+        7, {"name": "worker", "request_source": "subagent", "session_id": "sess-abc123"}
     )
-    plugin._counters["kt.subagent.errors"].add.assert_called_with(1, {"name": "worker"})
+    plugin._counters["kt.subagent.errors"].add.assert_called_with(1, {"name": "worker", "request_source": "subagent", "session_id": "sess-abc123"})
 
 
 @pytest.mark.asyncio
@@ -307,14 +314,14 @@ async def test_compact_hooks() -> None:
     plugin = _make_plugin()
 
     await plugin.on_compact_start(context_length=5000)
-    plugin._counters["kt.compact.count"].add.assert_called_with(1, {})
+    plugin._counters["kt.compact.count"].add.assert_called_with(1, {"session_id": "sess-abc123"})
     plugin._histograms["kt.compact.context_length"].record.assert_called_with(
-        5000, {}
+        5000, {"session_id": "sess-abc123"}
     )
 
     await plugin.on_compact_end(summary="compressed", messages_removed=12)
     plugin._histograms["kt.compact.messages_removed"].record.assert_called_with(
-        12, {}
+        12, {"session_id": "sess-abc123"}
     )
 
 
@@ -326,12 +333,12 @@ async def test_on_event() -> None:
     event = SimpleNamespace(type="tool_output")
     await plugin.on_event(event)
     plugin._counters["kt.events"].add.assert_called_with(
-        1, {"event_type": "tool_output"}
+        1, {"event_type": "tool_output", "session_id": "sess-abc123"}
     )
 
     # event=None defaults to "unknown"
     await plugin.on_event(None)
-    plugin._counters["kt.events"].add.assert_called_with(1, {"event_type": "unknown"})
+    plugin._counters["kt.events"].add.assert_called_with(1, {"event_type": "unknown", "session_id": "sess-abc123"})
 
 
 @pytest.mark.asyncio
@@ -340,7 +347,7 @@ async def test_on_interrupt() -> None:
     plugin = _make_plugin()
 
     await plugin.on_interrupt()
-    plugin._counters["kt.interrupts"].add.assert_called_with(1, {})
+    plugin._counters["kt.interrupts"].add.assert_called_with(1, {"session_id": "sess-abc123"})
 
 
 @pytest.mark.asyncio
@@ -360,18 +367,20 @@ async def test_session_duration() -> None:
 
 
 def test_metric_names_immutable() -> None:
-    """15. All 12 counter names and 7 histogram names exist in the module defs."""
+    """15. All 14 counter names and 7 histogram names exist in the module defs."""
     counter_names = [name for name, _ in mod._COUNTER_DEFS]
     histogram_names = [name for name, _, _ in mod._HISTOGRAM_DEFS]
 
-    assert len(counter_names) == 12
+    assert len(counter_names) == 14
     assert len(histogram_names) == 7
 
     expected_counters = {
         "kt.llm.calls",
         "kt.llm.tokens.prompt",
         "kt.llm.tokens.completion",
-        "kt.llm.tokens.cached",
+        "kt.llm.tokens.cache_read",
+        "kt.llm.tokens.cache_creation",
+        "kt.llm.active_time",
         "kt.tool.calls",
         "kt.tool.dispatches",
         "kt.tool.errors",
@@ -393,3 +402,374 @@ def test_metric_names_immutable() -> None:
 
     assert set(counter_names) == expected_counters
     assert set(histogram_names) == expected_histograms
+
+
+# ── New tests for Claude Code alignment (P0) ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_llm_tokens_cache_read_and_creation_split() -> None:
+    """16. post_llm_call emits cache_read from cached_tokens and cache_creation from cache_write_tokens."""
+    plugin = _make_plugin()
+    msgs = ["msg"]
+
+    await plugin.post_llm_call(
+        msgs, None,
+        {"prompt_tokens": 100, "completion_tokens": 50, "cached_tokens": 80, "cache_write_tokens": 30},
+        model="gpt-5.4",
+    )
+
+    plugin._counters["kt.llm.tokens.cache_read"].add.assert_called_with(
+        80, {"model": "gpt-5.4", "request_source": "main", "session_id": "sess-abc123"}
+    )
+    plugin._counters["kt.llm.tokens.cache_creation"].add.assert_called_with(
+        30, {"model": "gpt-5.4", "request_source": "main", "session_id": "sess-abc123"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_llm_no_legacy_cached_counter() -> None:
+    """17. kt.llm.tokens.cached no longer exists in counter defs."""
+    counter_names = {name for name, _ in mod._COUNTER_DEFS}
+    assert "kt.llm.tokens.cached" not in counter_names
+    assert "kt.llm.tokens.cache_read" in counter_names
+    assert "kt.llm.tokens.cache_creation" in counter_names
+
+
+@pytest.mark.asyncio
+async def test_llm_attrs_include_request_source_main() -> None:
+    """18. post_llm_call sets request_source='main' on all LLM metrics."""
+    plugin = _make_plugin()
+    msgs = ["m"]
+    clock = Clock()
+
+    with patch("kt_biome.plugins.otel_metrics.time.monotonic", clock):
+        await plugin.pre_llm_call(msgs, model="m")
+        clock.advance(0.1)
+        await plugin.post_llm_call(msgs, None, {"prompt_tokens": 10}, model="m")
+
+    expected_attrs = {"model": "m", "request_source": "main", "session_id": "sess-abc123"}
+    plugin._counters["kt.llm.calls"].add.assert_called_with(1, expected_attrs)
+
+
+@pytest.mark.asyncio
+async def test_llm_attrs_include_session_id() -> None:
+    """19. post_llm_call includes session_id from PluginContext."""
+    plugin = _make_plugin()
+    plugin._ctx = _ctx(session_id="my-session-42")
+    msgs = ["m"]
+
+    await plugin.post_llm_call(msgs, None, {"prompt_tokens": 5}, model="x")
+
+    for call in plugin._counters["kt.llm.calls"].add.call_args_list:
+        _, kwargs = call
+        assert kwargs.get("session_id") == "my-session-42" or call[0][1].get("session_id") == "my-session-42"
+
+
+@pytest.mark.asyncio
+async def test_subagent_attrs_include_request_source_and_session() -> None:
+    """20. post_subagent_run sets request_source='subagent' and session_id."""
+    plugin = _make_plugin()
+    clock = Clock()
+
+    with patch("kt_biome.plugins.otel_metrics.time.monotonic", clock):
+        await plugin.pre_subagent_run("task", name="worker", job_id="j10")
+        clock.advance(2.0)
+        result = SimpleNamespace(success=True, turns=3)
+        await plugin.post_subagent_run(result, name="worker", job_id="j10")
+
+    expected_attrs = {"name": "worker", "request_source": "subagent", "session_id": "sess-abc123"}
+    plugin._counters["kt.subagent.runs"].add.assert_called_with(1, expected_attrs)
+    plugin._histograms["kt.subagent.duration"].record.assert_called_with(2000.0, expected_attrs)
+    plugin._histograms["kt.subagent.turns"].record.assert_called_with(3, expected_attrs)
+
+
+@pytest.mark.asyncio
+async def test_llm_active_time_accumulates() -> None:
+    """21. kt.llm.active_time counter accumulates LLM call duration in seconds."""
+    plugin = _make_plugin()
+    clock = Clock()
+
+    with patch("kt_biome.plugins.otel_metrics.time.monotonic", clock):
+        await plugin.pre_llm_call(["a"], model="m")
+        clock.advance(0.5)
+        await plugin.post_llm_call(["a"], None, {"prompt_tokens": 10}, model="m")
+
+        await plugin.pre_llm_call(["b"], model="m")
+        clock.advance(1.5)
+        await plugin.post_llm_call(["b"], None, {"prompt_tokens": 20}, model="m")
+
+    calls = plugin._counters["kt.llm.active_time"].add.call_args_list
+    assert len(calls) == 2
+    assert calls[0][0][0] == pytest.approx(0.5)
+    assert calls[1][0][0] == pytest.approx(1.5)
+
+
+def test_counter_defs_now_14() -> None:
+    """22. Counter defs increased from 12 to 14 (cached→cache_read+cache_creation + active_time)."""
+    assert len(mod._COUNTER_DEFS) == 14
+
+
+# ── Trace span tests (TDD — failing until tracer implemented) ─────────
+
+
+class SpanRecorder:
+    """Collects all spans created during a test for assertion."""
+
+    def __init__(self) -> None:
+        self.spans: list[SimpleNamespace] = []
+
+    def start_span(self, name: str, attributes: dict | None = None, **kw: Any) -> SimpleNamespace:
+        span = SimpleNamespace(
+            name=name,
+            attributes=dict(attributes or {}),
+            status=None,
+            ended=False,
+            _recorder=self,
+        )
+        span.set_attribute = lambda key, value: span.attributes.__setitem__(key, value)
+        span.set_status = lambda status: setattr(span, "status", status)
+        span.end = lambda: setattr(span, "ended", True)
+        self.spans.append(span)
+        return span
+
+
+def _make_tracer_plugin(options: dict | None = None) -> tuple[OTelMetricsPlugin, SpanRecorder]:
+    """Create plugin with mocked OTEL instruments AND a tracer that records spans."""
+    plugin = _make_plugin(options)
+    recorder = SpanRecorder()
+
+    mock_tracer = MagicMock()
+    mock_tracer.start_span = recorder.start_span
+    mock_tracer.start_as_current_span = lambda name, **kw: MagicMock(
+        __enter__=lambda s: recorder.start_span(name, **kw),
+        __exit__=lambda s, *exc: None,
+    )
+
+    plugin._tracer = mock_tracer
+
+    mock_status = SimpleNamespace(OK="OK", ERROR="ERROR")
+    mod.StatusCode = mock_status
+
+    return plugin, recorder
+
+
+@pytest.mark.asyncio
+async def test_llm_call_emits_span() -> None:
+    """23. pre→post LLM call emits a kt.llm.call span with model, tokens, and request_source."""
+    plugin, recorder = _make_tracer_plugin()
+    clock = Clock()
+    msgs = ["msg"]
+
+    with patch("kt_biome.plugins.otel_metrics.time.monotonic", clock):
+        await plugin.pre_llm_call(msgs, model="deepseek-v4")
+        clock.advance(0.3)
+        await plugin.post_llm_call(
+            msgs, None,
+            {"prompt_tokens": 100, "completion_tokens": 50, "cached_tokens": 20, "cache_write_tokens": 5},
+            model="deepseek-v4",
+        )
+
+    spans = [s for s in recorder.spans if s.name == "kt.llm.call"]
+    assert len(spans) == 1
+    s = spans[0]
+    assert s.attributes.get("model") == "deepseek-v4"
+    assert s.attributes.get("request_source") == "main"
+    assert s.attributes.get("session_id") == "sess-abc123"
+    assert s.attributes.get("llm.prompt_tokens") == 100
+    assert s.attributes.get("llm.completion_tokens") == 50
+    assert s.attributes.get("llm.cache_read_tokens") == 20
+    assert s.attributes.get("llm.cache_creation_tokens") == 5
+    assert s.ended
+
+
+@pytest.mark.asyncio
+async def test_tool_execute_emits_span() -> None:
+    """24. pre→post tool execute emits a kt.tool.execute span with tool_name and success."""
+    plugin, recorder = _make_tracer_plugin()
+    clock = Clock()
+
+    with patch("kt_biome.plugins.otel_metrics.time.monotonic", clock):
+        await plugin.pre_tool_execute({"cmd": "ls"}, tool_name="bash", job_id="j1")
+        clock.advance(0.2)
+        result = SimpleNamespace(success=True)
+        await plugin.post_tool_execute(result, tool_name="bash", job_id="j1")
+
+    spans = [s for s in recorder.spans if s.name == "kt.tool.execute"]
+    assert len(spans) == 1
+    s = spans[0]
+    assert s.attributes.get("tool_name") == "bash"
+    assert s.attributes.get("success") is True
+    assert s.ended
+
+
+@pytest.mark.asyncio
+async def test_subagent_run_emits_span() -> None:
+    """25. pre→post subagent run emits a kt.subagent.run span with name and turns."""
+    plugin, recorder = _make_tracer_plugin()
+    clock = Clock()
+
+    with patch("kt_biome.plugins.otel_metrics.time.monotonic", clock):
+        await plugin.pre_subagent_run("do stuff", name="worker", job_id="j2")
+        clock.advance(1.5)
+        result = SimpleNamespace(success=True, turns=4)
+        await plugin.post_subagent_run(result, name="worker", job_id="j2")
+
+    spans = [s for s in recorder.spans if s.name == "kt.subagent.run"]
+    assert len(spans) == 1
+    s = spans[0]
+    assert s.attributes.get("name") == "worker"
+    assert s.attributes.get("request_source") == "subagent"
+    assert s.attributes.get("session_id") == "sess-abc123"
+    assert s.attributes.get("success") is True
+    assert s.attributes.get("turns") == 4
+    assert s.ended
+
+
+@pytest.mark.asyncio
+async def test_tool_failure_span_status_error() -> None:
+    """26. Failed tool execution sets error status and success=False on span."""
+    plugin, recorder = _make_tracer_plugin()
+    clock = Clock()
+
+    with patch("kt_biome.plugins.otel_metrics.time.monotonic", clock):
+        await plugin.pre_tool_execute({"cmd": "bad"}, tool_name="bash", job_id="j3")
+        clock.advance(0.1)
+        result = SimpleNamespace(success=False)
+        await plugin.post_tool_execute(result, tool_name="bash", job_id="j3")
+
+    spans = [s for s in recorder.spans if s.name == "kt.tool.execute"]
+    assert len(spans) == 1
+    assert spans[0].attributes.get("success") is False
+    assert spans[0].status is not None
+
+
+@pytest.mark.asyncio
+async def test_on_load_creates_tracer_when_otel_available() -> None:
+    """27. on_load creates a tracer alongside the meter when OTEL is available."""
+    mock_meter = MagicMock()
+    mock_provider = MagicMock()
+    mock_provider.get_meter.return_value = mock_meter
+
+    mock_tracer = MagicMock()
+    mock_tracer_provider = MagicMock()
+    mock_tracer_provider.get_tracer.return_value = mock_tracer
+
+    p_avail = patch("kt_biome.plugins.otel_metrics._otel_available", True)
+    p_trace = patch("kt_biome.plugins.otel_metrics._trace_available", True)
+    p_resource = patch("kt_biome.plugins.otel_metrics.Resource", MagicMock(), create=True)
+    p_exporter = patch("kt_biome.plugins.otel_metrics.OTLPMetricExporter", MagicMock(), create=True)
+    p_reader = patch("kt_biome.plugins.otel_metrics.PeriodicExportingMetricReader", MagicMock(), create=True)
+    p_provider = patch("kt_biome.plugins.otel_metrics.MeterProvider", MagicMock(return_value=mock_provider), create=True)
+    p_span_exporter = patch("kt_biome.plugins.otel_metrics.OTLPSpanExporter", MagicMock(), create=True)
+    p_span_processor = patch("kt_biome.plugins.otel_metrics.BatchSpanProcessor", MagicMock(), create=True)
+    p_tracer_provider = patch("kt_biome.plugins.otel_metrics.TracerProvider", MagicMock(return_value=mock_tracer_provider), create=True)
+    p_trace_api = patch("kt_biome.plugins.otel_metrics.trace_api", MagicMock(), create=True)
+    p_status = patch("kt_biome.plugins.otel_metrics.StatusCode", MagicMock(), create=True)
+
+    with p_avail, p_trace, p_resource, p_exporter, p_reader, p_provider, \
+         p_span_exporter, p_span_processor, p_tracer_provider, p_trace_api, p_status:
+        plugin = OTelMetricsPlugin({"endpoint": "http://otel:4318/v1/metrics"})
+        await plugin.on_load(_ctx())
+
+    mock_tracer_provider.get_tracer.assert_called_once()
+    assert plugin._tracer is not None
+
+
+# ── session_id 补全 + UUID fallback tests ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_tool_execute_attrs_include_session_id() -> None:
+    """28. post_tool_execute includes session_id in all metric attrs."""
+    plugin = _make_plugin()
+    clock = Clock()
+
+    with patch("kt_biome.plugins.otel_metrics.time.monotonic", clock):
+        await plugin.pre_tool_execute({"cmd": "ls"}, tool_name="bash", job_id="j1")
+        clock.advance(0.3)
+        result = SimpleNamespace(success=True)
+        await plugin.post_tool_execute(result, tool_name="bash", job_id="j1")
+
+    expected_attrs = {"tool_name": "bash", "session_id": "sess-abc123"}
+    plugin._counters["kt.tool.calls"].add.assert_called_with(1, expected_attrs)
+    plugin._histograms["kt.tool.duration"].record.assert_called_with(
+        pytest.approx(300.0), expected_attrs
+    )
+
+
+@pytest.mark.asyncio
+async def test_tool_dispatch_attrs_include_session_id() -> None:
+    """29. pre_tool_dispatch includes session_id in attrs."""
+    plugin = _make_plugin()
+    call = SimpleNamespace(name="bash", args={}, raw="")
+    await plugin.pre_tool_dispatch(call, _ctx())
+
+    plugin._counters["kt.tool.dispatches"].add.assert_called_with(
+        1, {"tool_name": "bash", "session_id": "sess-abc123"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_compact_hooks_include_session_id() -> None:
+    """30. on_compact_start/end include session_id in attrs."""
+    plugin = _make_plugin()
+
+    await plugin.on_compact_start(context_length=5000)
+    plugin._counters["kt.compact.count"].add.assert_called_with(1, {"session_id": "sess-abc123"})
+    plugin._histograms["kt.compact.context_length"].record.assert_called_with(
+        5000, {"session_id": "sess-abc123"}
+    )
+
+    await plugin.on_compact_end(summary="compressed", messages_removed=12)
+    plugin._histograms["kt.compact.messages_removed"].record.assert_called_with(
+        12, {"session_id": "sess-abc123"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_on_event_includes_session_id() -> None:
+    """31. on_event includes session_id in attrs."""
+    plugin = _make_plugin()
+    event = SimpleNamespace(type="tool_output")
+    await plugin.on_event(event)
+    plugin._counters["kt.events"].add.assert_called_with(
+        1, {"event_type": "tool_output", "session_id": "sess-abc123"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_on_interrupt_includes_session_id() -> None:
+    """32. on_interrupt includes session_id in attrs."""
+    plugin = _make_plugin()
+    await plugin.on_interrupt()
+    plugin._counters["kt.interrupts"].add.assert_called_with(1, {"session_id": "sess-abc123"})
+
+
+@pytest.mark.asyncio
+async def test_uuid_fallback_when_session_id_empty() -> None:
+    """33. When session_id is empty, a UUID is auto-generated and stable across calls."""
+    plugin = _make_plugin()
+    plugin._ctx = _ctx(session_id="")
+
+    await plugin.on_interrupt()
+    await plugin.on_interrupt()
+
+    calls = plugin._counters["kt.interrupts"].add.call_args_list
+    assert len(calls) == 2
+    sid1 = calls[0][0][1]["session_id"]
+    sid2 = calls[1][0][1]["session_id"]
+    assert sid1 != ""
+    assert sid1 == sid2
+    assert len(sid1) == 32  # uuid4 hex format
+
+
+@pytest.mark.asyncio
+async def test_uuid_not_used_when_session_id_present() -> None:
+    """34. When session_id is provided, it is used as-is (no UUID fallback)."""
+    plugin = _make_plugin()
+    plugin._ctx = _ctx(session_id="my-real-session")
+
+    await plugin.on_interrupt()
+    calls = plugin._counters["kt.interrupts"].add.call_args_list
+    assert calls[0][0][1]["session_id"] == "my-real-session"
